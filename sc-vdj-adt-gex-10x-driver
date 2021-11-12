@@ -1,0 +1,283 @@
+#!/bin/bash
+
+#############################
+# sc-vdj-adt-gex-10x driver #
+#############################
+
+### This script will 
+### * Run the sc-vdj-adt-gex-10x pipeline on data in current runfolder
+### * Modify standard nextflow.config to project specific parameters
+### * Generate project folder in shared/ctg-delivery/sc-vdj-adt-gex-10x
+###  -> Here it will store nextflow.config, nf-pipeline, samplesheet, feature.ref.csv in ctg-log 
+###  -> Write pipeline output 
+### * nf-Pipeline writes qc to shared/ctg-qc/sc-vdj-adt-gex-10x
+
+# Initialize variables
+runfolder=$(pwd)
+run=$(basename $runfolder)
+demux='y'
+resume='n'
+index='dual'
+dryrun='n'
+
+# usage message 
+usage() {
+
+    echo ""
+    echo "Usage: sc-vdj-adt-gex-10x [ -m META_ID ] [ -s SAMPLESHEET ] [ -f FEATURE-REF-CSV ] [-i INDEX-TYPE-RNA] [ -b BCL2FASTQ-ARG ] [ -r RESUME ] [ -c CUSTOM-GENOME ] [ -d DEMUX-OFF ] [ -n DRY-RUN ] [ -h HELP ] "  1>&2
+    echo ""
+    echo ""
+    echo "Optional arguments: "
+    echo "META-ID           -m : Set 'meta-id' for run-analysis (e.g. 210330-10x). Default: Takes date of runfolder + run ID in runfolder name and adds sc-vdj-adt-gex-10x as suffix. E.g. '210330_A00681_0334_AHWFKTDMXX' becomes 210330_0334-sc-vdj-adt-gex-10x "
+    echo "SAMPLESHEET       -s : Set samplesheet used for run (Default: runfolder/CTG_SampleSheet.sc-vdj-adt-gex-10x.csv)"
+    echo "FEATURE REF       -f : Set feature ref csv path (Default: runfolder/feature.ref.csv) "
+    echo "INDEX-TYPE        -i : Set -a if change to single index. (Default: dual) "  
+    echo "BCL2FASTQ-ARG     -b : String with bcl2fastq argument for demux. e.g. '--use-bases-mask=Y28n*,I6n*,N10,Y90n*'"
+    echo "RESUME            -r : Set if to resume nf-pipeline"
+    echo "CUSTOM-GENOME     -c : Path to custom reference genome if needed. Skip if human/mouse defined in samplesheet "
+    echo "DEMUX-OFF         -d : Set flag to skip mkfastq (then fastq must be in FQDIR) "
+    echo "DRY-RUN           -n : Set -n if you only want to create pipeline directory structure, copy all files to ctg-projects, but not start pipeline. Good if you want to modify config etc manually for this project before starting nextflow."
+    echo "HELP              -h : print help message" 
+   
+}
+
+exit_abnormal() {
+    usage
+    exit 1
+}
+
+# Read and control input arguments 
+while getopts m:f:s:ib:rc:dnh opt; do
+    case $opt in
+	m) id=$OPTARG
+	    ;;
+	f) featureref=$OPTARG
+	    ;;
+	s) sheet=$OPTARG
+	    ;;
+	i) index="single"
+	    ;;
+	b) b2farg=$OPTARG
+	    ;;
+	r) resume="y"
+	    ;;
+	c) custom_genome=$OPTARG
+	    ;;
+	d) demux="n"
+	    ;;
+	n) dryrun="y"
+	    ;;
+	h) exit_abnormal
+	    ;;
+	\?) echo "> Error: Invalid option -$OPTARG" >&2
+	    exit_abnormal ;;
+	:) echo "> Error: -${OPTARG} requires an argument: -i needs project-id and -s need samplesheet name! "
+	    exit_abnormal ;;
+    esac
+done
+
+## Check arguments
+shift "$(( OPTIND -1 ))"
+
+# Check samplesheet name
+if [ -z $sheet ]; then
+    echo ""; echo "> No samplesheet specified"
+    sheet="CTG_SampleSheet.sc-vdj-adt-gex-10x.csv"
+    echo "- Using '${sheet}'"
+    if [ ! -f $sheet ]; then
+	echo "> Error: $sheet does not exist (in current dir)"
+	echo "- Please specify correct samplesheet, or create a $sheet in current runfolder"
+	exit_abnormal
+    fi
+fi
+
+# Check meta-id - assign project number if not specified
+if [ -z $id ]; then
+    echo "> No meta-ID specified"
+    metaid=$(grep "ProjectID" $sheet | cut -f2 -d"," | tr -d '\n\r')
+    if [ -z $metaid ]; then
+	metaid=$(echo $run | cut -f1,3 -d"_")
+	id="${metaid}-sc-vdj-adt-gex-10x"
+    else
+	id="${metaid}"
+    fi
+    echo "- Using: '${id}'"
+fi
+
+# Get email for delivery
+email=$(grep "email," $sheet | cut -f2 -d"," | tr -d "\n\r")
+
+# Check if meta-ID already exist
+if [ "$resume" == 'n' ] && [ -d /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id ]; then
+    # Prompt user to approve overwriting current sc-vdj-adt-gex-10x project-folder
+    read -p "> WARNING: $id has been used before:
+
+The following directories already exist:
+- /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id 
+- /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id 
+- /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id 
+
+
+ Do you want to overwrite these folders? 
+
+(y/n)  ... : " prompt
+    if [[ $prompt != "y" ]]
+    then 
+	echo "> Exiting: Please provide new [ -i metaID ] !"
+	exit_abnormal
+    else
+	echo "> Deleting content of the folders.. "
+	rm -r /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id/*
+	rm -r /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id/*
+	rm -r /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id/*
+    fi
+fi
+
+# If no feature reference Csv specified from command line arguments, search samplesheet header for featureref 
+if [ -z $featureref ]; then
+
+    # Get feature reference from samplesheet
+    featureSS=$(grep "featureref," $sheet | cut -f2 -d"," | tr -d "\n\r")
+    if [ $featureSS == "totalseqc" ]; then
+	featureref_orig="/projects/fs1/shared/references/cellranger_totalseq/totalSeq_C/totalseqC.feature.ref.csv"
+	echo ""
+	echo "> Feature ref found in samplesheet header: '$featureSS'. Using $featureref_orig"
+    else
+	echo "> Currently only totalSeq-C (totalseqc) is supported from samplesheet.. This samplesheet has $featureSS. Please see if this can be added to references: /projects/fs1/shared/references/cellranger_totalseq/ . If not, add the reference to runfolder as feature.ref.csv. "
+    fi
+
+    # If not found in samplesheet, look in runfolder 
+    if [ -z $featureSS ]; then
+	echo "> No feature ref specified in samplesheet, searching in runfolder for feature.ref.csv file"
+	featureref_orig="$runfolder/feature.ref.csv"
+	if [ ! -f $featureref_orig ]; then
+	    echo "> No feature.ref.csv file in runfolder.. please add, or specify feature reference file with the -f tag"
+	    exit_abnormal
+	else
+	    echo "> Feature ref found in runfolder: using $featureref_orig"
+	fi
+    fi
+fi
+
+##############
+# Print info #
+##############
+echo ""
+echo "> The following arguments are entered:"
+echo "ID               : $id"
+echo "Runfolder        : $runfolder " 
+echo "Sheet            : $sheet"
+echo "Index-type       : ${index}-index"
+echo "Bcl2fq-arg       : '$b2farg'"
+echo "FeatureRef csv   : $featureref_orig "
+
+if [ -z $custom_genome ]; then
+    echo "Custom Genome    : NONE "
+else
+    echo "Custom Genome    : $custom_genome "
+fi
+
+if [ $demux == "y" ]; then
+    echo "Demux            : YES "
+else
+    echo "Demux            : NO "
+fi
+
+if [ $resume == "y" ]; then
+    echo "Resume           : YES "
+else
+    echo "Resume           : NO "
+fi
+
+echo ""
+echo "Runfolder          : $runfolder "
+echo "Project Logfolder  : /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id"
+echo "QC Logfolder       : /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id"
+echo "Output             : /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id"
+echo "Delivery Mail      : $email"
+echo ""
+
+# Prompt user to approve running in current directory and input
+read -p "> WARNING: Can only be run from within runfolder! 
+
+- Are you in runfolder in which you want run? 
+- And is input described above correct ?  
+
+(y/n)  ... : " prompt
+if [[ $prompt != "y" ]]
+then 
+    echo "> Exiting: Go to runfolder!"
+    exit 0
+fi
+
+################
+# Set up files #
+################
+
+# Creating project dir for logging pipeline
+projdir="/projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id/"
+mkdir -p $projdir
+
+# Copy nextflow script and config to project folder
+nf_pipe="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/pipe-sc-vdj-adt-gex-10x.nf"
+nf_config="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/nextflow.config"
+nf_bin="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/bin/"
+
+cp $nf_pipe $projdir
+cp -r $nf_bin $projdir
+
+cp $nf_config $projdir
+projdir_meta="$projdir/metadata/"
+mkdir -p $projdir_meta
+cp $featureref_orig $projdir_meta
+featurerefcsv=$(basename $featureref_orig)
+featureref="${projdir_meta}/$featurerefcsv"
+
+# Edit config file
+proj_conf=$projdir/nextflow.config
+sed "s/xmetaidx/$id/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s|xrunfolderx|$runfolder|g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s/xsamplesheetx/$sheet/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s/xbclargx/$b2farg/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s/xindexx/$index/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s|xfeaturesx|$featureref|g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+sed "s|xemailx|$email|g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+if [ ! -z $custom_genome ]; then
+    sed "s|xcustomgenomex|$custom_genome|g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+fi
+if [ $demux == "y" ];then
+    sed "s/xdemuxx/y/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+else
+    sed "s/xdemuxx/n/g" $proj_conf > tmp.txt; mv tmp.txt $proj_conf
+fi
+
+# Copy edited config to runfolder
+cp $proj_conf $runfolder/$id.nextflow.config
+# Copy samplesheet to project folder (ctg-projects..)
+
+cp $sheet $projdir
+
+#####################
+# Start nf-pipeline #
+#####################
+
+# Go to ctg-project folder to execute pipeline
+cd $projdir
+
+if [ $dryrun == "n" ]; then
+    if [ $resume == "y" ]; then
+	nohup nextflow run $nf_pipe -resume > log.nf.sc-vdj-adt-gex-10x.$id &
+    else
+	nohup nextflow run $nf_pipe > log.nf.sc-vdj-adt-gex-10x.$id &
+    fi
+    echo ; echo 
+    echo "######################################"
+    echo "# sc-vdj-adt-gex-10x pipeline submitted #"
+    echo "######################################"
+    echo ; echo 
+else
+    echo "Pipeline not started (flag -n). Pipeline files ready in $projdir."
+fi
+
+
+

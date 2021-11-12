@@ -1,0 +1,14 @@
+ProjectID,2021_081
+email,anna.hagstrom@med.lu.se
+featureref,totalseqc
+[Data]
+Lane,Sample_ID,Sample_Name,index,Sample_Project,Sample_Species,Sample_Lib,Sample_Pair
+,45D_viable_cells,21_147,SI-TT-E8,2021_081_Helena,human,gex,1
+,113D_Leukemia_cells,21_148,SI-TT-F8,2021_081_Helena,human,gex,2
+,113D_CD45pos_CD19neg,21_149,SI-TT-G8,2021_081_Helena,human,gex,3
+,45D_viable_cells_BCR,21_147_BCR,SI-TT-B8,2021_081_Helena,human,bcr,1
+,113D_Leukemia_cells_BCR,21_148_BCR,SI-TT-C8,2021_081_Helena,human,bcr,2
+,113D_CD45pos_CD19neg_BCR,21_149_BCR,SI-TT-D8,2021_081_Helena,human,bcr,3
+,45D_viable_cells_FB,21_147_FB,SI-TN-A2,2021_081_Helena,human,fb,1
+,113D_Leukemia_cells_FB,21_148_FB,SI-TN-B2,2021_081_Helena,human,fb,2
+,113D_CD45pos_CD19neg_FB,21_149_FB,SI-TN-C2,2021_081_Helena,human,fb,3
