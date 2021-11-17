@@ -21,7 +21,7 @@ The following files must be in the runfolder to start pipeline successfully.
 
 ### Samplesheet requirements:
 
-1. Above row with [Data], declare ProjectID (CTG-project), email (for customer delivery) and featureref (currently only `totalseqc` is supported).
+1. Above row with [Data], declare metaid (name/id of the current analysis), email (for customer delivery) and featureref (currently only `totalseqc` is supported).
 2. The "gex" samples defines the sample ids. other libraries (tcr, bcr and fb) must have the same sample_ID, but added "_TCR", "_BCR" or "_FB" suffix. 
 3. Sample_Pair groups the "samples" that belong together across GEX, TCR and BCR.
 4. Leave Lane column empty if not applied, otherwise set to 1,2 etc.
@@ -31,7 +31,7 @@ Note: Must be in comma-separated values format (.csv)
 
 | , | , | , | , | , | , | , |
 | --- | --- | --- | --- | --- | --- | --- |
-| ProjectID | 2021_999 | , | , | , | , | , |
+| metaid | 2021_999 | , | , | , | , | , |
 | email | customer@email.com | , | , | , | , | , |
 | featureref | totalseqc | , | , | , | , | , |
 | [Data] | , | , | , | , | , | , |
@@ -55,12 +55,14 @@ The nf-pipeline takes the following Columns from samplesheet to use in channels:
 - `Lane` : Lane of flowcell for this sample. Leave Lane column empty if not applied, otherwise set to 1,2 etc. 
 
 The metadata above [Data] is used by driver.
+- `metaid` is optional
+- `featureref`: only totalseqc is supported.
 
 ### Samplesheet template (.csv)
 
 #### Name : `CTG_SampleSheet.sc-vdj-adt-gex-10x.csv`
 ```
-ProjectID,2021_081
+metaid,2021_081
 email,anna.hagstrom@med.lu.se
 featureref,totalseqc
 [Data]
