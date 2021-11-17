@@ -20,6 +20,12 @@ resume='n'
 index='dual'
 dryrun='n'
 
+# Set directories
+ctgproj="/projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/"
+ctgqc="/projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/"
+ctgdelivery="/projects/fs1/shared/ctg-delivery/sc-vdj-adt-gex-10x/"
+ctgpipe="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/"
+
 # usage message 
 usage() {
 
@@ -94,7 +100,7 @@ fi
 # Check meta-id - assign project number if not specified
 if [ -z $id ]; then
     echo "> No meta-ID specified"
-    metaid=$(grep "ProjectID" $sheet | cut -f2 -d"," | tr -d '\n\r')
+    metaid=$(grep "metaid" $sheet | cut -f2 -d"," | tr -d '\n\r')
     if [ -z $metaid ]; then
 	metaid=$(echo $run | cut -f1,3 -d"_")
 	id="${metaid}-sc-vdj-adt-gex-10x"
@@ -113,9 +119,9 @@ if [ "$resume" == 'n' ] && [ -d /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex
     read -p "> WARNING: $id has been used before:
 
 The following directories already exist:
-- /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id 
-- /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id 
-- /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id 
+- $ctgproj/$id 
+- $ctgqc/$id 
+- $ctgdelivery/$id 
 
 
  Do you want to overwrite these folders? 
@@ -127,9 +133,9 @@ The following directories already exist:
 	exit_abnormal
     else
 	echo "> Deleting content of the folders.. "
-	rm -r /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id/*
-	rm -r /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id/*
-	rm -r /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id/*
+	rm -r $ctgproj/$id/*
+	rm -r $ctgqc/$id/*
+	rm -r $ctgdelivery/$id/*
     fi
 fi
 
@@ -191,9 +197,9 @@ fi
 
 echo ""
 echo "Runfolder          : $runfolder "
-echo "Project Logfolder  : /projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id"
-echo "QC Logfolder       : /projects/fs1/shared/ctg-qc/sc-vdj-adt-gex-10x/$id"
-echo "Output             : /projects/fs1/nas-sync/ctg-delivery/sc-vdj-adt-gex-10x/$id"
+echo "Project Logfolder  : $ctgproj/$id"
+echo "QC Logfolder       : $ctgqc/$id"
+echo "Output             : $ctgdelivery/$id"
 echo "Delivery Mail      : $email"
 echo ""
 
@@ -215,13 +221,13 @@ fi
 ################
 
 # Creating project dir for logging pipeline
-projdir="/projects/fs1/shared/ctg-projects/sc-vdj-adt-gex-10x/$id/"
+projdir="$ctgproj/$id/"
 mkdir -p $projdir
 
 # Copy nextflow script and config to project folder
-nf_pipe="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/pipe-sc-vdj-adt-gex-10x.nf"
-nf_config="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/nextflow.config"
-nf_bin="/projects/fs1/shared/ctg-pipelines/ctg-sc-vdj-adt-gex-10x/bin/"
+nf_pipe="$ctgpipe/pipe-sc-vdj-adt-gex-10x.nf"
+nf_config="$ctgpipe/nextflow.config"
+nf_bin="$ctgpipe/bin"
 
 cp $nf_pipe $projdir
 cp -r $nf_bin $projdir

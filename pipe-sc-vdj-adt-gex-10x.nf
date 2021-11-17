@@ -243,6 +243,9 @@ cellranger mkfastq \\
 	   --localmem=115 \\
 	   --output-dir ${fqdir} \\
 	   $b2farg
+
+#Remove Undetermined fastq
+rm -r -f ${fqdir}/Undetermined*
 """
 }
 
